@@ -12,8 +12,8 @@ data:
     namespaces: [""] # everything, aka v1.NamepsaceAll, aka cluster-wide
     initializerName: "sidecar.initializer.istio.io"
     params:
-      initImage: quay.io/calico/istio-proxy_init:20180118230747
-      proxyImage: quay.io/calico/istio-proxy_debug:20180118230747
+      initImage: gcr.io/istio-testing/proxy_init:3522feaeb04fd5c184934b773798a55c97dd8fc3
+      proxyImage: gcr.io/istio-testing/proxy_debug:3522feaeb04fd5c184934b773798a55c97dd8fc3
       verbosity: 2
       version: runner_171031_222114
       meshConfigMapName: istio

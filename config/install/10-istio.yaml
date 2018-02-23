@@ -300,6 +300,49 @@ data:
       # to collect and convert statsd metrics into Prometheus metrics.
       #statsdUdpAddress: istio-mixer.istio-system:9125
 ---
+# Pilot CRDs
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: destinationpolicies.config.istio.io
+spec:
+  group: config.istio.io
+  names:
+    kind: DestinationPolicy
+    listKind: DestinationPolicyList
+    plural: destinationpolicies
+    singular: destinationpolicy
+  scope: Namespaced
+  version: v1alpha2
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: egressrules.config.istio.io
+spec:
+  group: config.istio.io
+  names:
+    kind: EgressRule
+    listKind: EgressRuleList
+    plural: egressrules
+    singular: egressrule
+  scope: Namespaced
+  version: v1alpha2
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: routerules.config.istio.io
+spec:
+  group: config.istio.io
+  names:
+    kind: RouteRule
+    listKind: RouteRuleList
+    plural: routerules
+    singular: routerule
+  scope: Namespaced
+  version: v1alpha2
+---
 # Pilot service for discovery
 apiVersion: v1
 kind: Service
@@ -336,13 +379,15 @@ spec:
     metadata:
       labels:
         istio: pilot
+      annotations:
+        sidecar.istio.io/inject: "false"
     spec:
       serviceAccountName: istio-pilot-service-account
       containers:
       - name: discovery
-        image: quay.io/calico/istio-pilot:20180118230747
-        imagePullPolicy: Always
-        args: ["discovery", "-v", "2", "--admission-service", "istio-pilot-external"]
+        image: gcr.io/istio-testing/pilot:3522feaeb04fd5c184934b773798a55c97dd8fc3
+        imagePullPolicy: IfNotPresent
+        args: ["discovery", "-v", "2", "--admission-service", "istio-pilot", "--webhookEndpoint", "unix:///var/run/calico/webhook.sock"]
         ports:
         - containerPort: 8080
         - containerPort: 443
@@ -360,10 +405,48 @@ spec:
         volumeMounts:
         - name: config-volume
           mountPath: /etc/istio/config
+        - name: webhook
+          mountPath: /var/run/calico
+      - name: istio-proxy
+        image: gcr.io/istio-testing/proxy_debug:3522feaeb04fd5c184934b773798a55c97dd8fc3
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 15003
+        args:
+        - proxy
+        - pilot
+        - -v
+        - "2"
+        - --discoveryAddress
+        - istio-pilot:15003
+        - --controlPlaneAuthPolicy
+        - NONE #--controlPlaneAuthPolicy
+        - --customConfigFile
+        - /etc/istio/proxy/envoy_pilot.json
+        volumeMounts:
+        - name: istio-certs
+          mountPath: /etc/certs
+          readOnly: true
+      - name: pilot-webhook
+        image: quay.io/calico/pilot-webhook:eb9c71b
+        imagePullPolicy: Always
+        args:
+        - /pilot-webhook
+        - /var/run/calico/webhook.sock
+        - --debug
+        volumeMounts:
+        - name: webhook
+          mountPath: /var/run/calico
       volumes:
       - name: config-volume
         configMap:
           name: istio
+      - name: istio-certs
+        secret:
+          secretName: istio.istio-pilot-service-account
+          optional: true
+      - name: webhook
+        emptyDir: {}
 ---
 ################################
 # Istio ingress controller
@@ -422,7 +505,7 @@ spec:
       serviceAccountName: istio-ingress-service-account
       containers:
       - name: istio-ingress
-        image: quay.io/calico/istio-proxy_debug:20180118230747
+        image: gcr.io/istio-testing/proxy_debug:3522feaeb04fd5c184934b773798a55c97dd8fc3
         args:
         - proxy
         - ingress
@@ -504,7 +587,7 @@ spec:
       serviceAccountName: istio-egress-service-account
       containers:
       - name: proxy
-        image: quay.io/calico/istio-proxy_debug:20180118230747
+        image: gcr.io/istio-testing/proxy_debug:3522feaeb04fd5c184934b773798a55c97dd8fc3
         imagePullPolicy: IfNotPresent
         args:
         - proxy
